@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+backend/.venv/
+.venv/
+
+# Environment variables / secrets
+.env
+backend/.env
+frontend/.env
+
+# Qdrant local storage
+backend/qdrant_storage/
+backend/qdrant_storage_backup_20260922/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

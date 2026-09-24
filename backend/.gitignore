@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# IDE
+.vscode/
+
+# Local Qdrant database
+qdrant_storage/
+qdrant_storage_backup_*/
+
+# Generated outputs
+output/
+
+# Python cache
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db

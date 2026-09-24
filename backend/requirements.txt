@@ -1,0 +1,6 @@
+sentence-transformers>=2.7.0
+qdrant-client==1.19.1
+numpy
+fastapi
+uvicorn[standard]
+google-genai

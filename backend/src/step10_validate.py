@@ -1,0 +1,136 @@
+"""
+Step 10: Response Validation
+
+Validates the response produced by Step 9 before it reaches
+the customer.
+
+This layer is deterministic and does not call another LLM.
+"""
+
+import re
+
+
+FALLBACK_MESSAGE = (
+    "I want to make sure I provide you with accurate information. "
+    "Let me connect you with our team who can assist you further. "
+    "You can reach us directly, or I can have someone follow up with you shortly."
+)
+
+
+def extract_price_ranges(text: str) -> list[str]:
+    """
+    Extract simple Indian-currency price/range expressions.
+
+    Examples:
+    ₹1,00,000
+    ₹1,00,000–₹2,00,000
+    """
+    if not text:
+        return []
+
+    pattern = r"₹\s*[\d,]+(?:\s*[–-]\s*₹?\s*[\d,]+)?"
+    return re.findall(pattern, text)
+
+
+def validate_response(
+    generated_response: str,
+    business_decision,
+) -> tuple[bool, str, str]:
+    """
+    Validate a Step 9 response.
+
+    Returns:
+        (is_valid, final_response, reason)
+    """
+
+    approved_answer = business_decision.approved_answer or ""
+    response = (generated_response or "").strip()
+
+    # ---------------------------------------------------------
+    # 1. Empty response
+    # ---------------------------------------------------------
+    if not response:
+        if approved_answer:
+            return (
+                False,
+                approved_answer,
+                "Gemini returned an empty response; used approved answer.",
+            )
+
+        return (
+            False,
+            FALLBACK_MESSAGE,
+            "Gemini returned an empty response and no approved answer exists.",
+        )
+
+    # ---------------------------------------------------------
+    # 2. Non-LLM decisions
+    # ---------------------------------------------------------
+    if not business_decision.use_llm:
+        if approved_answer:
+            return (
+                True,
+                approved_answer,
+                "Step 8 required the approved answer directly.",
+            )
+
+        return (
+            True,
+            response,
+            "No LLM validation required.",
+        )
+
+    # ---------------------------------------------------------
+    # 3. Price protection
+    # ---------------------------------------------------------
+    approved_prices = extract_price_ranges(approved_answer)
+
+    if approved_prices:
+        for price in approved_prices:
+            if price not in response:
+                return (
+                    False,
+                    approved_answer,
+                    f"Required approved price '{price}' was not preserved.",
+                )
+
+    # ---------------------------------------------------------
+    # 4. Basic unsupported-price protection
+    # ---------------------------------------------------------
+    generated_prices = extract_price_ranges(response)
+
+    if approved_prices:
+        for generated_price in generated_prices:
+            if generated_price not in approved_prices:
+                return (
+                    False,
+                    approved_answer,
+                    f"Generated response introduced an unapproved price: "
+                    f"{generated_price}",
+                )
+
+    # ---------------------------------------------------------
+    # 5. Final successful validation
+    # ---------------------------------------------------------
+    return (
+        True,
+        response,
+        "Response passed validation.",
+    )
+
+
+def print_validation(
+    is_valid: bool,
+    final_response: str,
+    reason: str,
+) -> None:
+    print("\n" + "=" * 70)
+    print("STEP 10 RESPONSE VALIDATION")
+    print("=" * 70)
+    print(f"valid    : {is_valid}")
+    print(f"reason   : {reason}")
+    print("-" * 70)
+    print("FINAL RESPONSE")
+    print("-" * 70)
+    print(final_response)
+    print("=" * 70)
