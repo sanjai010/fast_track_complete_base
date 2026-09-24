@@ -1,6 +1,6 @@
 function SuggestedQuestions({ questions, onSelect, disabled }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {questions.map((question) => (
         <button
           key={question}
@@ -8,13 +8,15 @@ function SuggestedQuestions({ questions, onSelect, disabled }) {
           onClick={() => onSelect(question)}
           disabled={disabled}
           className="
+            shrink-0
+            whitespace-nowrap
             rounded-full
             border
             border-white/15
             bg-white/[0.03]
-            px-3.5
-            py-2
-            text-xs
+            px-3
+            py-1
+            text-[11px]
             text-gray-400
             transition
             hover:border-red-500/50
