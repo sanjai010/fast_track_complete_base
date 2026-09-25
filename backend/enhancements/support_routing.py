@@ -35,6 +35,25 @@ POST_SERVICE_SIGNALS = (
     "refund",
 )
 
+# Product-failure language. Kept deliberately separate from words like
+# "scratch" / "fade" / "crack" that also appear in discovery questions
+# ("is it scratch proof?") - wrong matches would force customers into
+# the complaint flow.
+COMPLAINT_FAILURE_PATTERNS = (
+    r"\bpeel(?:ing|ed|s)?\b",
+    r"\bbubbl(?:ing|es|ed)?\b",
+    r"\bhazing\b",
+    r"\bhazy\b",
+    r"\bstreakings?\b",
+    r"\bswirl\s+marks?\b",
+    r"\bfad(?:ing|ed)\b",
+    r"\bdull(?:ing|ed)\b",
+    r"\bdiscolou?r(?:ation|ing|ed)?\b",
+    r"\byellowing\b",
+    r"\blifting\b",
+    r"\bdelamination\b",
+)
+
 SERVICE_ALIASES = {
     "ceramic coating": ("ceramic", "ceramic coating"),
     "paint protection film": ("paint protection film", "ppf"),
@@ -72,7 +91,12 @@ def _complaint_records() -> tuple[dict, ...]:
 
 def _message_has_post_service_signal(message: str) -> bool:
     normalised = _normalise(message)
-    return any(signal in normalised for signal in POST_SERVICE_SIGNALS)
+    if any(signal in normalised for signal in POST_SERVICE_SIGNALS):
+        return True
+    return any(
+        re.search(pattern, message, re.IGNORECASE)
+        for pattern in COMPLAINT_FAILURE_PATTERNS
+    )
 
 
 def _find_service_complaint(message: str) -> dict | None:

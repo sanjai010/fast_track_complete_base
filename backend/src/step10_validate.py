@@ -16,6 +16,40 @@ FALLBACK_MESSAGE = (
     "You can reach us directly, or I can have someone follow up with you shortly."
 )
 
+# ---------------------------------------------------------
+# Overclaim detection.
+#
+# Catches confident/unverifiable promises that the LLM should
+# never make on behalf of the business. Each pattern is verified
+# NOT to appear in any approved answer, so a hit is a real
+# hallucinated overclaim - not a legitimately approved statement.
+# ---------------------------------------------------------
+
+OVERCLAIM_PATTERNS = [
+    r"\bguaranteed\b",
+    r"\b100\s*%\b",
+    r"\bwe\s+guarantee\b",
+    r"\bnever\s+(?:fade|fail|dull|peel|scratch|break)\b",
+    r"\b(?:best|no\.1|number\s*one)\s+in\b",
+    r"\bfade[-\s]?proof\b",
+    r"\bscratch[-\s]?proof\b",
+]
+
+# Very short responses are usually broken/robotic output.
+MIN_RESPONSE_LENGTH = 15
+
+# Very long responses overwhelm the customer and drift off-course.
+MAX_RESPONSE_LENGTH = 600
+
+
+def _contains_overclaim(text: str) -> bool:
+    if not text:
+        return False
+    return any(
+        re.search(pattern, text, re.IGNORECASE)
+        for pattern in OVERCLAIM_PATTERNS
+    )
+
 
 def extract_price_ranges(text: str) -> list[str]:
     """
@@ -110,7 +144,47 @@ def validate_response(
                 )
 
     # ---------------------------------------------------------
-    # 5. Final successful validation
+    # 5. Length checks
+    #
+    # Extremely short responses are almost always broken output;
+    # extremely long ones overload the customer. Use the approved
+    # answer instead when either happens.
+    # ---------------------------------------------------------
+    response_len = len(response)
+
+    if response_len < MIN_RESPONSE_LENGTH:
+        return (
+            False,
+            approved_answer or FALLBACK_MESSAGE,
+            (
+                f"Generated response too short "
+                f"({response_len} chars); used approved answer."
+            ),
+        )
+
+    if response_len > MAX_RESPONSE_LENGTH:
+        return (
+            False,
+            approved_answer or FALLBACK_MESSAGE,
+            (
+                f"Generated response too long "
+                f"({response_len} chars); used approved answer."
+            ),
+        )
+
+    # ---------------------------------------------------------
+    # 6. Overclaim guard
+    # ---------------------------------------------------------
+    if _contains_overclaim(response):
+        return (
+            False,
+            approved_answer or FALLBACK_MESSAGE,
+            "Generated response contained an unapproved overclaim; "
+            "used approved answer.",
+        )
+
+    # ---------------------------------------------------------
+    # 7. Final successful validation
     # ---------------------------------------------------------
     return (
         True,

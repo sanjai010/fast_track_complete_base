@@ -26,8 +26,19 @@ class SupportRoutingTests(unittest.TestCase):
     def test_ordinary_question_is_not_forced_into_complaint_flow(self):
         self.assertIsNone(route_post_service_issue("What is the price of ceramic coating?"))
 
+    def test_peeling_complaint_escalates(self):
+        route = route_post_service_issue(
+            "My ceramic coating is peeling after a week"
+        )
+        self.assertIsNotNone(route)
+        self.assertEqual(route.decision, "ESCALATE_COMPLAINT")
+
+    def test_discovery_language_does_not_spill_into_complaints(self):
+        self.assertIsNone(route_post_service_issue("Is ceramic coating scratch proof?"))
+        self.assertIsNone(route_post_service_issue("Is PPF fade resistant?"))
+
     def test_unknown_reply_is_constructive(self):
-        self.assertIn("I can help", helpful_unknown_response())
+        self.assertIn("I can best assist", helpful_unknown_response())
 
 
 if __name__ == "__main__":

@@ -31,6 +31,58 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 # ---------------------------------------------------------------------
+# Shared style guidance (few-shot + output format)
+#
+# Injected into every generation prompt so the model produces
+# consistent, professional, on-brand replies regardless of which
+# OpenRouter model answers.
+#
+# The examples are tone/structure illustrations only - the model is
+# still required to source every factual claim from the approved
+# knowledge in the prompt. No figures are invented here.
+# ---------------------------------------------------------------------
+
+FEW_SHOT_EXAMPLES = """
+EXAMPLE CONVERSATIONS (illustrative tone only - never copy their facts):
+
+1)
+Customer: do u do ceramic coating?
+Agent: We do! Ceramic coating is one of our most popular paint-protection
+services. It adds a tough hydrophobic layer that keeps your paint glossy,
+contaminants slide off, and washing becomes noticeably easier. Want me to
+share pricing and how long it takes?
+
+2)
+Customer: is window tinting legal in india?
+Agent: That's a smart thing to check. The rules around window tinting are
+specific and depend on your exact vehicle and current regulations, so we
+always handle it carefully and confirm compliance before starting. If you
+share your car model, I can get the team to verify the current position for
+that exact setup.
+
+3)
+Customer: how much and how long for ppf on my x5
+Agent: Great choice - PPF is ideal for keeping an X5's front end free of
+stone chips. I can give you our range and a typical duration, and for an
+exact figure on your vehicle I'd suggest a quick call with the team for a
+precise quote. Want me to book that in for you?
+"""
+
+OUTPUT_FORMAT_GUIDE = """
+OUTPUT FORMAT:
+- Plain conversational text only. No markdown headers, no emojis, no
+  ALL-CAPS titles, no XML, no bullets with labels like "- Price:".
+- Lead with the direct answer to the customer's question, then add the
+  supporting detail they need.
+- Keep it tight: roughly 30-70 words. Use bullet points only when the
+  customer asked for 3 or more separate pieces of information.
+- End with one natural closing question or offer when it fits the thread
+  (for example "Anything else I can help with?"). Do not force one.
+- Return ONLY the final customer-facing message.
+"""
+
+
+# ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
 
@@ -138,6 +190,7 @@ def generate_response(
     user_message: str,
     business_decision: BusinessDecision,
     history: list[dict] = None,
+    conversation_state: str = None,
 ) -> str:
 
     # -------------------------------------------------------------
@@ -206,7 +259,7 @@ are a knowledgeable FastTracks representative who genuinely wants to help.
 
 ---
 
-{f'CONVERSATION HISTORY (for context only - do not repeat this):' + chr(10) + history_text + chr(10) if history_text else ''}CUSTOMER MESSAGE:
+{f'CONVERSATION HISTORY (for context only - do not repeat this):' + chr(10) + history_text + chr(10) if history_text else ''}{f'CONVERSATION STATE:' + chr(10) + conversation_state + chr(10) if conversation_state else ''}CUSTOMER MESSAGE:
 {user_message}
 
 SERVICE: {service}
@@ -218,6 +271,8 @@ APPROVED FASTTRACKS KNOWLEDGE:
 {approved_answer}
 
 ---
+
+{FEW_SHOT_EXAMPLES}
 
 RESPONSE GUIDELINES:
 
@@ -275,9 +330,7 @@ ABSOLUTELY NEVER:
   requires customer input to proceed.
 - Promise actions that are not supported by the approved knowledge.
 
-FINAL OUTPUT:
-Return ONLY the customer-facing message. No labels, prefixes,
-analysis, or meta-commentary.
+{OUTPUT_FORMAT_GUIDE}
 """
 
     try:
@@ -307,6 +360,7 @@ def generate_multi_intent_response(
     user_message: str,
     combined_knowledge: list[dict],
     history: list[dict] = None,
+    conversation_state: str = None,
 ) -> str:
 
     if not combined_knowledge:
@@ -392,13 +446,15 @@ coherent, professional response.
 
 ---
 
-{f'CONVERSATION HISTORY (for context only - do not repeat this):' + chr(10) + history_text + chr(10) if history_text else ''}CUSTOMER MESSAGE:
+{f'CONVERSATION HISTORY (for context only - do not repeat this):' + chr(10) + history_text + chr(10) if history_text else ''}{f'CONVERSATION STATE:' + chr(10) + conversation_state + chr(10) if conversation_state else ''}CUSTOMER MESSAGE:
 {user_message}
 
 APPROVED KNOWLEDGE:
 {combined_context}
 
 ---
+
+{FEW_SHOT_EXAMPLES}
 
 RESPONSE GUIDELINES:
 
@@ -436,9 +492,7 @@ ABSOLUTELY NEVER:
 - Sound robotic or formulaic.
 - Repeat the same information unnecessarily.
 
-FINAL OUTPUT:
-Return ONLY the customer-facing message. No labels, prefixes,
-or meta-commentary.
+{OUTPUT_FORMAT_GUIDE}
 """
 
     try:

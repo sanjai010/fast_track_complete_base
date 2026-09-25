@@ -100,3 +100,9 @@ QDRANT_API_KEY = os.environ.get(
 )
 
 COLLECTION_NAME = "fasttracks_knowledge"
+
+# Customer-submitted booking records (JSONL, one record per line).
+
+CUSTOMER_DATA_DIR = os.path.join(BASE_DIR, "data", "customer")
+
+BOOKINGS_PATH = os.path.join(CUSTOMER_DATA_DIR, "bookings.jsonl")

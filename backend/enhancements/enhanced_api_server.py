@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import traceback
+import uuid
 from copy import deepcopy
 
 from fastapi import FastAPI, HTTPException
@@ -18,8 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.step6_ingest_qdrant import get_client
-from src.step7_retrieve import retrieve
 from src.step8_business_rules import apply_business_rules
+from .hybrid_search import hybrid_retrieve
 from src.step9_gemini import (
     generate_response,
     generate_multi_intent_response,
@@ -44,6 +45,22 @@ from .multi_intent_decision import (
 )
 
 from .conversation_router import route_basic_conversation
+
+from .follow_up import (
+    build_conversation_state,
+    resolve_follow_up,
+)
+
+from .conversation_memory import (
+    new_session_id,
+    record_turn,
+    set_thread_type,
+)
+
+from .booking_store import (
+    list_bookings,
+    save_booking,
+)
 
 
 # ---------------------------------------------------------
@@ -121,6 +138,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     history: list[dict] = Field(default_factory=list)
+    session_id: str | None = None
 
 
 class EnhancedChatResponse(BaseModel):
@@ -129,8 +147,18 @@ class EnhancedChatResponse(BaseModel):
     validated: bool
     route: str
     suggested_actions: list[str]
+    session_id: str | None = None
     canonical_id: str | None = None
     retrieval_score: float | None = None
+
+
+class BookingRequest(BaseModel):
+    date: str = Field(min_length=1, max_length=20)
+    time: str = Field(min_length=1, max_length=30)
+    service: str = Field(min_length=1, max_length=200)
+    vehicle: str = Field(default="", max_length=200)
+    name: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=40)
 
 
 # ---------------------------------------------------------
@@ -347,6 +375,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
 
     message = request.message.strip()
     history = request.history or []
+    session_id = request.session_id or new_session_id()
 
     if not message:
         raise HTTPException(
@@ -367,6 +396,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
             validated=True,
             route=conversation.route,
             suggested_actions=[],
+            session_id=session_id,
             canonical_id=None,
             retrieval_score=None,
         )
@@ -386,6 +416,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
             validated=True,
             route="RAG",
             suggested_actions=suggested_actions("RAG"),
+            session_id=session_id,
             canonical_id="GENERAL_DISCOVERY",
             retrieval_score=1.0,
         )
@@ -397,6 +428,21 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
     support_route = route_post_service_issue(message)
 
     if support_route:
+        # Keep the thread in complaint mode so follow-ups ("and the
+        # warranty?") stay inside the complaint guardrails.
+        set_thread_type(session_id, "COMPLAINT")
+
+        record_turn(
+            session_id,
+            service=None,
+            intent="COMPLAINT",
+            canonical_id=support_route.canonical_id,
+            approved_answer=support_route.response,
+            score=0.0,
+            decision=support_route.decision,
+            message=message,
+        )
+
         return EnhancedChatResponse(
             response=support_route.response,
             decision=support_route.decision,
@@ -405,6 +451,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
             suggested_actions=suggested_actions(
                 support_route.name
             ),
+            session_id=session_id,
             canonical_id=support_route.canonical_id,
         )
 
@@ -414,10 +461,40 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
         # Step 7 - Retrieve top candidates
         # -------------------------------------------------
 
-        # Build a context-aware query for follow-up questions
-        search_query = build_context_query(message, history)
+        # -------------------------------------------------
+        # Follow-up / conversation memory
+        #
+        # If this message is a follow-up ("what about the other one?",
+        # "and the warranty?"), resolve its referent against the last
+        # topic and build a self-contained retrieval query.
+        # -------------------------------------------------
 
-        results = retrieve(
+        follow_up = resolve_follow_up(
+            message,
+            session_id,
+            history,
+        )
+
+        if follow_up:
+            search_query = follow_up["resolved_query"]
+            conversation_state = build_conversation_state(
+                follow_up["referent"]
+            )
+            print(
+                "\n========== FOLLOW-UP RESOLVED =========="
+                f"\nmessage          : {message}"
+                f"\nresolved query   : {search_query}"
+                f"\nsource           : {follow_up['rewrite_source']}"
+                f"\nreferent service : {follow_up['referent'].get('service')}"
+                f"\nreferent intent  : {follow_up['referent'].get('intent')}"
+                "\n=========================================\n"
+            )
+        else:
+            # Build a context-aware query for follow-up questions
+            search_query = build_context_query(message, history)
+            conversation_state = None
+
+        results = hybrid_retrieve(
             search_query,
             top_k=10,
             client=qdrant_client,
@@ -446,6 +523,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
                 suggested_actions=suggested_actions(
                     "HELPFUL_FALLBACK"
                 ),
+                session_id=session_id,
             )
 
         # -------------------------------------------------
@@ -525,6 +603,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
                 message,
                 combined_knowledge,
                 history=history,
+                conversation_state=conversation_state,
             )
 
             print("\n========== STEP 9 MULTI-INTENT OUTPUT ==========")
@@ -573,12 +652,26 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
 
             highest_score = strongest_item["score"]
 
+            # Remember the topic the customer asked about, so later
+            # follow-ups can resolve their pronouns against it.
+            record_turn(
+                session_id,
+                service=strongest_item.get("service"),
+                intent=strongest_item.get("intent"),
+                canonical_id=strongest_item.get("canonical_id"),
+                approved_answer=final_response,
+                score=highest_score,
+                decision="MULTI_INTENT",
+                message=message,
+            )
+
             return EnhancedChatResponse(
                 response=final_response,
                 decision="MULTI_INTENT",
                 validated=validated,
                 route="RAG",
                 suggested_actions=suggested_actions("RAG"),
+                session_id=session_id,
                 canonical_id="MULTI",
                 retrieval_score=highest_score,
             )
@@ -606,6 +699,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
                 suggested_actions=suggested_actions(
                     "HELPFUL_FALLBACK"
                 ),
+                session_id=session_id,
                 canonical_id=decision.canonical_id,
                 retrieval_score=decision.score,
             )
@@ -618,6 +712,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
             message,
             decision,
             history=history,
+            conversation_state=conversation_state,
         )
 
         generated_response = clean_generated_response(
@@ -637,12 +732,26 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
             final_response
         )
 
+        # Remember the resolved topic so later follow-ups resolve
+        # against it.
+        record_turn(
+            session_id,
+            service=decision.service,
+            intent=decision.intent,
+            canonical_id=decision.canonical_id,
+            approved_answer=decision.approved_answer or final_response,
+            score=decision.score,
+            decision=decision.decision,
+            message=message,
+        )
+
         return EnhancedChatResponse(
             response=final_response,
             decision=decision.decision,
             validated=validated,
             route="RAG",
             suggested_actions=suggested_actions("RAG"),
+            session_id=session_id,
             canonical_id=decision.canonical_id,
             retrieval_score=decision.score,
         )
@@ -657,3 +766,53 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
             status_code=500,
             detail="The chat service could not process the request.",
         )
+
+
+# ---------------------------------------------------------------
+# Booking storage
+# ---------------------------------------------------------------
+
+
+@app.post("/bookings")
+def create_booking(request: BookingRequest) -> dict:
+    record = {
+        "date": request.date,
+        "time": request.time,
+        "service": request.service,
+        "vehicle": request.vehicle,
+        "name": request.name,
+        "phone": request.phone,
+    }
+
+    try:
+        stored = save_booking(record)
+    except Exception:
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail="The booking could not be saved.",
+        )
+
+    return {
+        "status": "confirmed",
+        "reference": stored["id"],
+        "booking": stored,
+    }
+
+
+@app.get("/bookings")
+def get_bookings(date: str | None = None) -> dict:
+    try:
+        records = list_bookings(date)
+    except Exception:
+        traceback.print_exc()
+
+        raise HTTPException(
+            status_code=500,
+            detail="The bookings could not be read.",
+        )
+
+    return {
+        "count": len(records),
+        "bookings": records,
+    }
