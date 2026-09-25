@@ -1,4 +1,4 @@
-function QuickActions({ onAction }) {
+function QuickActions({ onAction, light = false }) {
   const actions = [
     {
       id: "book",
@@ -41,29 +41,17 @@ function QuickActions({ onAction }) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      {actions.map((action) => (
+      {actions.map((action, index) => (
         <button
           key={action.id}
           type="button"
           onClick={() => onAction(action.id)}
-          className="
-            flex
-            items-center
-            gap-2
-            rounded-xl
-            border
-            border-white/10
-            bg-white/[0.03]
-            px-3
-            py-2
-            text-xs
-            font-medium
-            text-gray-300
-            transition
-            hover:border-red-500/50
-            hover:bg-red-600/10
-            hover:text-white
-          "
+          style={{ animationDelay: `${index * 60}ms` }}
+          className={`rise-in flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition ${
+            light
+              ? "border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+              : "border-white/10 bg-white/[0.03] text-gray-300 hover:border-red-500/50 hover:bg-red-600/10 hover:text-white"
+          }`}
         >
           {action.icon}
           {action.label}

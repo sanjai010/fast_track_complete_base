@@ -59,7 +59,7 @@ function isSunday(year, month, day) {
   return new Date(year, month, day).getDay() === 0;
 }
 
-function BookingCalendar({ onSubmit, onClose }) {
+function BookingCalendar({ onSubmit, onClose, light = false }) {
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
@@ -158,14 +158,36 @@ function BookingCalendar({ onSubmit, onClose }) {
     return `${selectedDate.day} ${MONTHS[selectedDate.month]} ${selectedDate.year}`;
   }
 
+  const rootClass = light
+    ? "rounded-xl border border-gray-100 bg-white"
+    : "rounded-xl border border-white/10 bg-[#0b0b0b]";
+
+  const navBtnClass = light
+    ? "flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+    : "flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white/10 hover:text-white";
+
+  const backBtnClass = light
+    ? "flex h-7 items-center gap-1 rounded-lg bg-gray-100 px-2 text-xs text-gray-600 transition hover:bg-gray-200 hover:text-gray-900"
+    : "flex h-7 items-center gap-1 rounded-lg bg-white/5 px-2 text-xs text-gray-400 transition hover:bg-white/10 hover:text-white";
+
+  const fieldClass = light
+    ? "w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-red-400"
+    : "w-full rounded-lg border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none placeholder:text-gray-600 focus:border-red-500";
+
   return (
-    <div className="rounded-xl border border-white/10 bg-[#0b0b0b]">
+    <div className={rootClass}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+      <div className={`flex items-center justify-between border-b px-4 py-3 ${light ? "border-gray-100" : "border-white/10"}`}>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold">Book Appointment</span>
+          <span className={`text-sm font-semibold ${light ? "text-gray-900" : ""}`}>
+            Book Appointment
+          </span>
           {step !== "date" && (
-            <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] text-red-400">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] ${
+                light ? "bg-red-100 text-red-600" : "bg-red-500/20 text-red-400"
+              }`}
+            >
               Step {step === "time" ? "1" : "2"} of 2
             </span>
           )}
@@ -173,7 +195,11 @@ function BookingCalendar({ onSubmit, onClose }) {
         <button
           type="button"
           onClick={onClose}
-          className="flex h-6 w-6 items-center justify-center rounded-full text-gray-500 transition hover:bg-white/10 hover:text-white"
+          className={`flex h-6 w-6 items-center justify-center rounded-full transition ${
+            light
+              ? "text-gray-400 hover:bg-gray-100 hover:text-gray-900"
+              : "text-gray-500 hover:bg-white/10 hover:text-white"
+          }`}
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -187,23 +213,15 @@ function BookingCalendar({ onSubmit, onClose }) {
           <div>
             {/* Month Navigation */}
             <div className="mb-4 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={prevMonth}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white/10 hover:text-white"
-              >
+              <button type="button" onClick={prevMonth} className={navBtnClass}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <span className="text-sm font-semibold">
+              <span className={`text-sm font-semibold ${light ? "text-gray-900" : ""}`}>
                 {MONTHS[currentMonth]} {currentYear}
               </span>
-              <button
-                type="button"
-                onClick={nextMonth}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white/10 hover:text-white"
-              >
+              <button type="button" onClick={nextMonth} className={navBtnClass}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
@@ -215,7 +233,9 @@ function BookingCalendar({ onSubmit, onClose }) {
               {WEEKDAYS.map((wd) => (
                 <div
                   key={wd}
-                  className="py-1 text-center text-[10px] font-semibold uppercase text-gray-500"
+                  className={`py-1 text-center text-[10px] font-semibold uppercase ${
+                    light ? "text-gray-400" : "text-gray-500"
+                  }`}
                 >
                   {wd}
                 </div>
@@ -233,20 +253,32 @@ function BookingCalendar({ onSubmit, onClose }) {
                   className={`
                     relative flex h-9 items-center justify-center rounded-lg text-sm transition
                     ${dayObj.day === null ? "invisible" : ""}
-                    ${dayObj.disabled ? "cursor-not-allowed text-gray-700" : "cursor-pointer hover:bg-white/10"}
-                    ${dayObj.today ? "font-bold text-red-400" : "text-gray-300"}
+                    ${dayObj.disabled
+                      ? "cursor-not-allowed text-gray-300"
+                      : light
+                        ? "cursor-pointer text-gray-700 hover:bg-gray-100"
+                        : "cursor-pointer hover:bg-white/10 text-gray-300"}
+                    ${dayObj.today
+                      ? light
+                        ? "font-bold text-red-600"
+                        : "font-bold text-red-400"
+                      : ""}
                     ${dayObj.selected ? "bg-red-600 text-white hover:bg-red-700" : ""}
                   `}
                 >
                   {dayObj.day}
                   {dayObj.today && !dayObj.selected && (
-                    <span className="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-red-500" />
+                    <span
+                      className={`absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full ${
+                        light ? "bg-red-500" : "bg-red-500"
+                      }`}
+                    />
                   )}
                 </button>
               ))}
             </div>
 
-            <p className="mt-3 text-center text-[10px] text-gray-600">
+            <p className={`mt-3 text-center text-[10px] ${light ? "text-gray-400" : "text-gray-600"}`}>
               Sundays closed. Past dates are disabled.
             </p>
           </div>
@@ -256,20 +288,18 @@ function BookingCalendar({ onSubmit, onClose }) {
         {step === "time" && (
           <div>
             <div className="mb-4 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setStep("date")}
-                className="flex h-7 items-center gap-1 rounded-lg bg-white/5 px-2 text-xs text-gray-400 transition hover:bg-white/10 hover:text-white"
-              >
+              <button type="button" onClick={() => setStep("date")} className={backBtnClass}>
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
                 Back
               </button>
-              <span className="text-xs text-gray-500">{formatDate()}</span>
+              <span className={`text-xs ${light ? "text-gray-500" : "text-gray-500"}`}>
+                {formatDate()}
+              </span>
             </div>
 
-            <p className="mb-3 text-xs font-semibold text-gray-400">
+            <p className={`mb-3 text-xs font-semibold ${light ? "text-gray-600" : "text-gray-400"}`}>
               Select a time slot
             </p>
 
@@ -279,21 +309,20 @@ function BookingCalendar({ onSubmit, onClose }) {
                   key={slot.value}
                   type="button"
                   onClick={() => handleTimeSelect(slot)}
-                  className={`
-                    rounded-lg border px-3 py-2.5 text-sm font-medium transition
-                    ${
-                      selectedTime?.value === slot.value
-                        ? "border-red-500 bg-red-600 text-white"
+                  className={`rounded-lg border px-3 py-2.5 text-sm font-medium transition ${
+                    selectedTime?.value === slot.value
+                      ? "border-red-500 bg-red-600 text-white"
+                      : light
+                        ? "border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50"
                         : "border-white/10 bg-white/[0.03] text-gray-300 hover:border-red-500/50 hover:bg-red-600/10"
-                    }
-                  `}
+                  }`}
                 >
                   {slot.label}
                 </button>
               ))}
             </div>
 
-            <p className="mt-3 text-center text-[10px] text-gray-600">
+            <p className={`mt-3 text-center text-[10px] ${light ? "text-gray-400" : "text-gray-600"}`}>
               Standard studio hours: 10:00 AM - 6:00 PM
             </p>
           </div>
@@ -303,17 +332,13 @@ function BookingCalendar({ onSubmit, onClose }) {
         {step === "details" && (
           <div>
             <div className="mb-4 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setStep("time")}
-                className="flex h-7 items-center gap-1 rounded-lg bg-white/5 px-2 text-xs text-gray-400 transition hover:bg-white/10 hover:text-white"
-              >
+              <button type="button" onClick={() => setStep("time")} className={backBtnClass}>
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
                 Back
               </button>
-              <span className="text-xs text-gray-500">
+              <span className={`text-xs ${light ? "text-gray-500" : "text-gray-500"}`}>
                 {formatDate()} at {selectedTime?.label}
               </span>
             </div>
@@ -321,13 +346,13 @@ function BookingCalendar({ onSubmit, onClose }) {
             <div className="space-y-3">
               {/* Service Selector */}
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                <label className={`mb-1 block text-[10px] font-semibold uppercase tracking-wider ${light ? "text-gray-500" : "text-gray-500"}`}>
                   Service
                 </label>
                 <select
                   value={service}
                   onChange={(e) => setService(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-red-500"
+                  className={fieldClass}
                 >
                   <option value="">Select a service</option>
                   {SERVICES.map((s) => (
@@ -340,7 +365,7 @@ function BookingCalendar({ onSubmit, onClose }) {
 
               {/* Vehicle */}
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                <label className={`mb-1 block text-[10px] font-semibold uppercase tracking-wider ${light ? "text-gray-500" : "text-gray-500"}`}>
                   Vehicle
                 </label>
                 <input
@@ -348,13 +373,13 @@ function BookingCalendar({ onSubmit, onClose }) {
                   value={vehicle}
                   onChange={(e) => setVehicle(e.target.value)}
                   placeholder="e.g. Hyundai Creta 2024"
-                  className="w-full rounded-lg border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none placeholder:text-gray-600 focus:border-red-500"
+                  className={fieldClass}
                 />
               </div>
 
               {/* Name */}
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                <label className={`mb-1 block text-[10px] font-semibold uppercase tracking-wider ${light ? "text-gray-500" : "text-gray-500"}`}>
                   Your Name *
                 </label>
                 <input
@@ -363,13 +388,13 @@ function BookingCalendar({ onSubmit, onClose }) {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Full name"
                   required
-                  className="w-full rounded-lg border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none placeholder:text-gray-600 focus:border-red-500"
+                  className={fieldClass}
                 />
               </div>
 
               {/* Phone */}
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                <label className={`mb-1 block text-[10px] font-semibold uppercase tracking-wider ${light ? "text-gray-500" : "text-gray-500"}`}>
                   Phone Number *
                 </label>
                 <input
@@ -378,7 +403,7 @@ function BookingCalendar({ onSubmit, onClose }) {
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+91 98765 43210"
                   required
-                  className="w-full rounded-lg border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none placeholder:text-gray-600 focus:border-red-500"
+                  className={fieldClass}
                 />
               </div>
 
@@ -387,12 +412,12 @@ function BookingCalendar({ onSubmit, onClose }) {
                 type="button"
                 onClick={handleSubmit}
                 disabled={!name.trim() || !phone.trim()}
-                className="w-full rounded-lg bg-red-600 py-3 text-sm font-bold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="w-full rounded-lg bg-red-600 py-3 text-sm font-bold text-white transition hover:bg-red-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Confirm Appointment
               </button>
 
-              <p className="text-center text-[10px] text-gray-600">
+              <p className={`text-center text-[10px] ${light ? "text-gray-400" : "text-gray-600"}`}>
                 Our team will confirm your appointment via WhatsApp or phone.
               </p>
             </div>

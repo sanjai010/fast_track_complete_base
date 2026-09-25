@@ -42,14 +42,14 @@ function renderMarkdown(text) {
   return html;
 }
 
-function MessageBubble({ sender, message, timestamp }) {
+function MessageBubble({ sender, message, timestamp, light = false, showMeta = false }) {
   const isUser = sender === "user";
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} message-enter`}>
       <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"} max-w-[85%]`}>
-        {/* Avatar */}
-        {!isUser && (
+        {/* Avatar (dark theme only - light panel keeps it clean like Intercom) */}
+        {!isUser && !light && (
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-red-600/20 text-[11px] font-bold text-red-400">
             FT
           </div>
@@ -58,10 +58,14 @@ function MessageBubble({ sender, message, timestamp }) {
         <div>
           {/* Bubble */}
           <div
-            className={`rounded-2xl px-4 py-3 text-sm leading-6 ${
-              isUser
-                ? "rounded-br-sm bg-red-600 text-white"
-                : "rounded-bl-sm border border-white/10 bg-white/[0.07] text-gray-200"
+            className={`break-words rounded-2xl px-4 py-2.5 text-sm leading-6 ${
+              light
+                ? isUser
+                  ? "bg-red-600 text-white"
+                  : "bg-gray-100 text-gray-900"
+                : isUser
+                  ? "rounded-br-sm bg-red-600 text-white"
+                  : "rounded-bl-sm border border-white/10 bg-white/[0.07] text-gray-200"
             }`}
           >
             {isUser ? (
@@ -71,8 +75,15 @@ function MessageBubble({ sender, message, timestamp }) {
             )}
           </div>
 
-          {/* Timestamp */}
-          {timestamp && (
+          {/* Meta line: shown under the greeting only (light) */}
+          {light && showMeta && (
+            <p className="mt-1.5 text-[11px] text-gray-400">
+              FastTracks AI &bull; Just now
+            </p>
+          )}
+
+          {/* Timestamp (dark theme behaviour) */}
+          {!light && timestamp && (
             <p
               className={`mt-1 text-[10px] text-gray-600 ${
                 isUser ? "text-right" : "text-left"

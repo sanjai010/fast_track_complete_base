@@ -49,17 +49,17 @@ button {
 
 /* Message entrance animation */
 .message-enter {
-  animation: messageSlideIn 0.3s ease-out;
+  animation: messageSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes messageSlideIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(8px) scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -77,4 +77,75 @@ button {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* Staggered entrance for chips, banners, panels */
+.rise-in {
+  animation: riseIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dropdown menu pop */
+.pop-in {
+  animation: popIn 0.18s ease-out both;
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* FAB attention ping (only while chat is closed) */
+.fab-ping {
+  animation: fabPing 2.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes fabPing {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  75%, 100% {
+    transform: scale(1.75);
+    opacity: 0;
+  }
+}
+
+/* Light scrollbar for the white chat panel */
+.ft-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+.ft-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ft-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ft-scroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 10px;
+}
+
+.ft-scroll::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }

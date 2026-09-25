@@ -11,7 +11,7 @@ import HandoffMessage from "../components/HandoffMessage";
 import BookingCalendar from "../components/BookingCalendar";
 import QuickActions from "../components/QuickActions";
 
-import { sendChatMessage } from "../services/chatApi";
+import { sendChatMessage, submitBooking } from "../services/chatApi";
 
 const SUGGESTED_QUESTIONS = [
   "What services do you offer?",
@@ -20,6 +20,9 @@ const SUGGESTED_QUESTIONS = [
   "What are your studio hours?",
 ];
 
+// Module scope keeps render pure (no Date.now during render).
+const WELCOME_TIMESTAMP = Date.now();
+
 function AIAssistant() {
   const navigate = useNavigate();
   const [messages, setMessages] = useState([
@@ -27,7 +30,7 @@ function AIAssistant() {
       sender: "ai",
       message:
         "Welcome to FastTracks Car Care! I'm here to help you with information about our services, pricing, bookings, and more. How can I assist you today?",
-      timestamp: Date.now(),
+      timestamp: WELCOME_TIMESTAMP,
     },
   ]);
 
@@ -87,6 +90,11 @@ function AIAssistant() {
         },
       ]);
 
+      if (data.session_id) {
+        setSessionId(data.session_id);
+        localStorage.setItem("fasttracks_session_id", data.session_id);
+      }
+
       if (
         data.decision === "NOT_CONFIRMED" ||
         data.decision === "HUMAN_HANDOFF"
@@ -142,7 +150,7 @@ function AIAssistant() {
     }
   }
 
-  function handleBookingSubmit(details) {
+  async function handleBookingSubmit(details) {
     setBookingOpen(false);
 
     const dateObj = new Date(details.date + "T00:00:00");
@@ -162,10 +170,42 @@ function AIAssistant() {
       },
       {
         sender: "ai",
-        message: `Your appointment request has been received!\n\n**Details:**\n- **Date:** ${formattedDate}\n- **Time:** ${details.time}\n- **Service:** ${details.service || "To be confirmed"}\n- **Vehicle:** ${details.vehicle || "Not specified"}\n- **Name:** ${details.name}\n- **Phone:** ${details.phone}\n\nOur team will confirm your appointment via WhatsApp or phone within the next hour. Is there anything else you'd like to know?`,
+        message: "Please give me one moment while I save your booking...",
         timestamp: Date.now(),
       },
     ]);
+
+    try {
+      const result = await submitBooking({
+        name: details.name,
+        phone: details.phone,
+        service: details.service,
+        date: details.date,
+        time: details.time,
+        vehicle: details.vehicle,
+      });
+
+      const reference = result.reference;
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "ai",
+          message: `Your appointment request has been received and saved!\n\n**Details:**\n- **Date:** ${formattedDate}\n- **Time:** ${details.time}\n- **Service:** ${details.service || "To be confirmed"}\n- **Vehicle:** ${details.vehicle || "Not specified"}\n- **Name:** ${details.name}\n- **Phone:** ${details.phone}\n- **Booking reference:** ${reference}\n\nOur team will confirm your appointment via WhatsApp or phone within the next hour. Is there anything else you'd like to know?`,
+          timestamp: Date.now(),
+        },
+      ]);
+    } catch (error) {
+      console.error("Booking save failed:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "ai",
+          message:
+            "I couldn't save your booking right now. Please try again, or call us directly at +91 80190 65252 — our team will book it for you.",
+          timestamp: Date.now(),
+        },
+      ]);
+    }
   }
 
   function handleLeadSubmit(form) {
