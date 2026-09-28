@@ -43,6 +43,8 @@ function AIAssistant() {
   const [customerName, setCustomerName] = useState("");
   const [vehicle, setVehicle] = useState(null);
   const [leadFormOpen, setLeadFormOpen] = useState(false);
+  const [showLeadForm, setShowLeadForm] = useState(true);
+  const [leadSubmitted, setLeadSubmitted] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(true);
 
@@ -100,6 +102,26 @@ function AIAssistant() {
         data.decision === "HUMAN_HANDOFF"
       ) {
         setHandoffRequired(true);
+      }
+
+      // Booking request from the backend -> open the appointment picker.
+      if (data.decision === "BOOKING_REQUEST" && !bookingOpen) {
+        setBookingOpen(true);
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "ai",
+            message:
+              "Please select your preferred date and time below to book your appointment.",
+            timestamp: Date.now(),
+          },
+        ]);
+      }
+
+      // The bot asked for vehicle/details -> surface the details form.
+      if (data.decision === "COLLECT_REQUIRED_DATA" && !leadSubmitted) {
+        setShowLeadForm(true);
+        setLeadFormOpen(true);
       }
     } catch (error) {
       console.error("Chat API error:", error);
@@ -213,7 +235,10 @@ function AIAssistant() {
 
     setCustomerName(form.name);
     setVehicle(null);
+    // Close the "Share your details" section once submitted.
     setLeadFormOpen(false);
+    setShowLeadForm(false);
+    setLeadSubmitted(true);
 
     setMessages((prev) => [
       ...prev,
@@ -396,14 +421,16 @@ function AIAssistant() {
             </div>
           )}
 
-          {/* Lead Form - Collapsible */}
-          <div className="px-5 pb-4">
-            <LeadForm
-              onSubmitLead={handleLeadSubmit}
-              isOpen={leadFormOpen}
-              onToggle={() => setLeadFormOpen((prev) => !prev)}
-            />
-          </div>
+          {/* Lead Form - Collapsible (hidden after submission) */}
+          {showLeadForm && (
+            <div className="px-5 pb-4">
+              <LeadForm
+                onSubmitLead={handleLeadSubmit}
+                isOpen={leadFormOpen}
+                onToggle={() => setLeadFormOpen((prev) => !prev)}
+              />
+            </div>
+          )}
 
           {/* Input */}
           <div className="border-t border-white/10 p-4">

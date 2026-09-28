@@ -46,6 +46,8 @@ from .multi_intent_decision import (
 
 from .conversation_router import route_basic_conversation
 
+from .knowledge_lookup import lookup_by_intent, record_as_result
+
 from .follow_up import (
     build_conversation_state,
     resolve_follow_up,
@@ -107,6 +109,103 @@ def build_context_query(
     )
 
     return expanded_query
+
+
+# ---------------------------------------------------------
+# Best-result selection
+# ---------------------------------------------------------
+
+# When a message carries several explicit signals, the most specific
+# closing intent wins: a price question must resolve to PRICE even when
+# "what is" also fired the broad DISCOVERY signal.
+INTENT_PRIORITY = [
+    "PRICE",
+    "CUSTOM_QUOTE",
+    "DISCOUNT",
+    "BOOKING",
+    "AVAILABILITY",
+    "DURATION",
+    "COMPATIBILITY",
+    "WARRANTY",
+    "LEGAL",
+    "SAFETY",
+    "PAYMENT",
+    "AFTERCARE",
+    "COMPLAINT",
+    "OPTIONS",
+    "PROCESS",
+    "PREPARATION",
+    "COMBINATION",
+    "REQUEST",
+    "PROBLEM_NEED",
+    "FEATURES",
+    "DISCOVERY",
+]
+
+
+def _prioritise(intents: list[str]) -> list[str]:
+    def rank(intent: str) -> tuple[int, str]:
+        intent = str(intent).upper()
+        if intent in INTENT_PRIORITY:
+            return (INTENT_PRIORITY.index(intent), intent)
+        return (len(INTENT_PRIORITY), intent)
+
+    return sorted(intents, key=rank)
+
+
+def select_best_result(
+    results: list[dict],
+    supported_intents: list[dict],
+    explicit_intents: list[str],
+) -> dict | None:
+    """Pick the retrieval result that matches what the customer asked.
+
+    Priority:
+    1. The most specific explicit signal, resolved either through
+       retrieval support or an exact service + intent knowledge lookup
+       ("how much is PPF" -> the PRICE record, not rank-0 COMPATIBILITY).
+    2. The highest-scoring candidate that passes Step 8.
+    3. The rank-0 fused result.
+    """
+
+    supported_by_intent = {
+        str(item.get("intent") or "").upper(): item
+        for item in supported_intents
+    }
+
+    service_context = ""
+    if results:
+        best_by_score = max(
+            results,
+            key=lambda item: float(item.get("score", 0.0)),
+        )
+        service_context = str(best_by_score.get("service") or "")
+
+    for intent in _prioritise(explicit_intents):
+        intent = str(intent).upper()
+
+        # 1a. Retrieval surfaced this explicit intent.
+        if intent in supported_by_intent:
+            return supported_by_intent[intent]["result"]
+
+        # 1b. Vector rank missed it; resolve the exact canonical record.
+        record = lookup_by_intent(service_context, intent)
+        if record:
+            return record_as_result(record)
+
+    # 2. No usable signal: first candidate Step 8 accepts.
+    if explicit_intents:
+        ranked = sorted(
+            results,
+            key=lambda item: float(item.get("score", 0.0)),
+            reverse=True,
+        )
+        for candidate in ranked:
+            if apply_business_rules(candidate).decision != "NOT_CONFIRMED":
+                return candidate
+
+    # 3. Fall back to the fused rank-0 result (Step 8 still gates it).
+    return results[0] if results else None
 
 
 app = FastAPI(
@@ -269,9 +368,48 @@ def general_services_response() -> str:
 # Customer-safe knowledge cleanup
 # ---------------------------------------------------------
 
+def customer_safe_answer(answer: str) -> str:
+    """
+    Keep the approved wording untouched in meaning, but remove internal
+    workflow terminology before the content reaches the response model.
+    """
+
+    # Internal workflow terminology
+    answer = re.sub(
+        r"\s*\(\s*ENQUIRY\s*/\s*VERIFY\s*\)",
+        "",
+        answer or "",
+        flags=re.IGNORECASE,
+    )
+
+    answer = re.sub(
+        r"\s*\(\s*ENQUIRY\s*/\s*CONFIRM\s*\)",
+        "",
+        answer,
+        flags=re.IGNORECASE,
+    )
+
+    # Make internal wording customer-facing
+    answer = re.sub(
+        r"\bNOT CONFIRMED as a universal duration\b",
+        "There is no confirmed universal duration",
+        answer,
+        flags=re.IGNORECASE,
+    )
+
+    answer = re.sub(
+        r"\bNOT CONFIRMED\b",
+        "not confirmed",
+        answer,
+        flags=re.IGNORECASE,
+    )
+
+    return answer.strip()
+
+
 def make_customer_safe_knowledge(items: list[dict]) -> list[dict]:
     """
-    Keep the original approved knowledge untouched, but remove
+    Keep the original approved knowledge untouched in meaning, but remove
     internal workflow terminology before sending the content
     to the response-generation model.
     """
@@ -279,39 +417,13 @@ def make_customer_safe_knowledge(items: list[dict]) -> list[dict]:
     safe_items = deepcopy(items)
 
     for item in safe_items:
-        answer = str(item.get("approved_answer") or "")
-
-        # Internal workflow terminology
-        answer = re.sub(
-            r"\s*\(\s*ENQUIRY\s*/\s*VERIFY\s*\)",
-            "",
-            answer,
-            flags=re.IGNORECASE,
+        item["approved_answer"] = customer_safe_answer(
+            str(item.get("approved_answer") or "")
         )
-
-        answer = re.sub(
-            r"\s*\(\s*ENQUIRY\s*/\s*CONFIRM\s*\)",
-            "",
-            answer,
-            flags=re.IGNORECASE,
-        )
-
-        # Make internal wording customer-facing
-        answer = re.sub(
-            r"\bNOT CONFIRMED as a universal duration\b",
-            "There is no confirmed universal duration",
-            answer,
-            flags=re.IGNORECASE,
-        )
-
-        answer = re.sub(
-            r"\bNOT CONFIRMED\b",
-            "Not confirmed",
-            answer,
-            flags=re.IGNORECASE,
-        )
-
-        item["approved_answer"] = answer.strip()
+        variants = item.get("approved_answer_variants", []) or []
+        item["approved_answer_variants"] = [
+            customer_safe_answer(str(v)) for v in variants
+        ]
 
     return safe_items
 
@@ -338,6 +450,21 @@ def clean_generated_response(response: str) -> str:
 
     for old, new in replacements.items():
         cleaned = cleaned.replace(old, new)
+
+    # Customer-facing wording for internal status terms that may leak
+    # from an approved answer into the generated text.
+    cleaned = re.sub(
+        r"\bNOT CONFIRMED as a universal duration\b",
+        "There is no confirmed universal duration",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\bNOT CONFIRMED\b",
+        "not confirmed",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
 
     # Remove excessive blank lines created by replacements
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
@@ -496,7 +623,7 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
 
         results = hybrid_retrieve(
             search_query,
-            top_k=10,
+            top_k=30,
             client=qdrant_client,
         )
         print("\n========== RAW RETRIEVAL ==========")
@@ -678,13 +805,39 @@ def chat(request: ChatRequest) -> EnhancedChatResponse:
 
         # -------------------------------------------------
         # Single-intent path
+        #
+        # Select the result that matches the customer's explicit
+        # wording (not merely the fused rank-0 candidate).
         # -------------------------------------------------
 
-        best_result = results[0]
+        best_result = select_best_result(
+            results,
+            combined["supported_intents"],
+            explicit_intents,
+        )
+
+        if best_result is None:
+            return EnhancedChatResponse(
+                response=helpful_unknown_response(),
+                decision="NOT_CONFIRMED",
+                validated=True,
+                route="HELPFUL_FALLBACK",
+                suggested_actions=suggested_actions(
+                    "HELPFUL_FALLBACK"
+                ),
+                session_id=session_id,
+            )
 
         decision = apply_business_rules(
             best_result
         )
+
+        # Single path also strips internal wording from the approved
+        # answer before it reaches the prompt or the customer.
+        if decision.approved_answer:
+            decision.approved_answer = customer_safe_answer(
+                decision.approved_answer
+            )
 
         # -------------------------------------------------
         # Confidence fallback

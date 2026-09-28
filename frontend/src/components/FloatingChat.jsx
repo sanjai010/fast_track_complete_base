@@ -34,6 +34,7 @@ function FloatingChat({ isOpen, onClose }) {
   const [handoffRequired, setHandoffRequired] = useState(false);
   const [leadFormOpen, setLeadFormOpen] = useState(false);
   const [showLeadForm, setShowLeadForm] = useState(false);
+  const [leadSubmitted, setLeadSubmitted] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -98,8 +99,26 @@ function FloatingChat({ isOpen, onClose }) {
         localStorage.setItem("fasttracks_session_id", data.session_id);
       }
 
+      // Booking request from the backend -> take the customer
+      // straight to the appointment picker.
+      if (data.decision === "BOOKING_REQUEST" && !bookingOpen) {
+        setBookingOpen(true);
+        setMessages((prev) => [
+          ...prev,
+          { sender: "ai", message: "Please select your preferred date and time below to book your appointment.", timestamp: Date.now() },
+        ]);
+      }
+
       if (data.decision === "NOT_CONFIRMED" || data.decision === "HUMAN_HANDOFF") {
         setHandoffRequired(true);
+        if (!leadSubmitted) {
+          setShowLeadForm(true);
+          setLeadFormOpen(true);
+        }
+      }
+
+      // The bot asked for vehicle/details -> surface the details form.
+      if (data.decision === "COLLECT_REQUIRED_DATA" && !leadSubmitted) {
         setShowLeadForm(true);
         setLeadFormOpen(true);
       }
@@ -146,6 +165,7 @@ function FloatingChat({ isOpen, onClose }) {
     setBookingOpen(false);
     setShowLeadForm(false);
     setLeadFormOpen(false);
+    setLeadSubmitted(false);
     setMenuOpen(false);
     setSessionId(null);
     localStorage.removeItem("fasttracks_session_id");
@@ -194,7 +214,10 @@ function FloatingChat({ isOpen, onClose }) {
   }
 
   function handleLeadSubmit(form) {
+    // Close the "Share your details" section once submitted.
     setLeadFormOpen(false);
+    setShowLeadForm(false);
+    setLeadSubmitted(true);
     setMessages((prev) => [
       ...prev,
       { sender: "ai", message: "Thank you for sharing your details! Our FastTracks team will review your requirements and follow up with you shortly.", timestamp: Date.now() },

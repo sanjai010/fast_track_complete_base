@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Navbar from "../components/Navbar";
+import Video from "../components/Video";
 import FloatingChat from "../components/FloatingChat";
 import ChatFAB from "../components/ChatFAB";
 
@@ -14,12 +15,15 @@ function Home() {
         {/* ================= HERO SECTION ================= */}
         <section className="relative min-h-[720px] overflow-hidden lg:min-h-[calc(100vh-82px)]">
 
-          {/* Hero Background Image */}
+          {/* Hero Background Image (fallback until video is added) */}
           <img
             src="/images/hero-car.jpg"
             alt="Fasttracks premium car"
             className="absolute inset-0 h-full w-full object-cover object-[70%_center]"
           />
+
+          {/* Hero Background Video */}
+          <Video />
 
           {/* Dark Overlay */}
           <div className="absolute inset-0 bg-black/35" />

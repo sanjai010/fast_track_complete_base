@@ -144,6 +144,29 @@ def validate_response(
                 )
 
     # ---------------------------------------------------------
+    # 4b. Content-anchor guard
+    #
+    # The reply must actually be about the approved knowledge.
+    # Catches nonsense/garbage generations (e.g. "User Safety: safe")
+    # that contain no price, no overclaim, and pass the length checks.
+    # ---------------------------------------------------------
+    if approved_answer:
+        approved_words = set(
+            re.findall(r"[a-z]{4,}", approved_answer.lower())
+        )
+        response_words = set(
+            re.findall(r"[a-z]{4,}", response.lower())
+        )
+
+        if approved_words and not (approved_words & response_words):
+            return (
+                False,
+                approved_answer,
+                "Generated response did not reference the approved "
+                "knowledge; used approved answer.",
+            )
+
+    # ---------------------------------------------------------
     # 5. Length checks
     #
     # Extremely short responses are almost always broken output;

@@ -162,14 +162,15 @@ def route_post_service_issue(message: str) -> SupportRoute | None:
 
 
 def helpful_unknown_response() -> str:
-    """Useful, truthful fallback for genuinely unsupported questions."""
+    """Short, constructive fallback for genuinely unsupported questions.
+
+    Kept brief on purpose: a long disclaimer reads as a deflection.
+    """
     return (
-        "I want to make sure I give you accurate information. I can best "
-        "assist with details about FastTracks services, pricing, bookings, "
-        "studio information, and post-service support.\n\n"
-        "Could you let me know which of these you need help with? "
-        "Alternatively, I can connect you with our team directly for "
-        "more specialized assistance."
+        "I can best assist with FastTracks services, pricing, bookings, "
+        "studio information, and post-service support — which of those "
+        "would you like? If you'd rather speak to the team, call us at "
+        "+91 80190 65252."
     )
 
 

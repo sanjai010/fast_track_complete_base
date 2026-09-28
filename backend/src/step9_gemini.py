@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import urllib.request
 
 from . import config
@@ -47,25 +48,35 @@ EXAMPLE CONVERSATIONS (illustrative tone only - never copy their facts):
 
 1)
 Customer: do u do ceramic coating?
-Agent: We do! Ceramic coating is one of our most popular paint-protection
-services. It adds a tough hydrophobic layer that keeps your paint glossy,
-contaminants slide off, and washing becomes noticeably easier. Want me to
-share pricing and how long it takes?
+Agent: We absolutely do! Ceramic coating is one of the most popular paint-protection services around. It adds a tough hydrophobic layer that keeps your paint glossy, contaminants slide right off, and washing becomes noticeably easier. Want me to share pricing and how long it takes?
 
 2)
 Customer: is window tinting legal in india?
-Agent: That's a smart thing to check. The rules around window tinting are
-specific and depend on your exact vehicle and current regulations, so we
-always handle it carefully and confirm compliance before starting. If you
-share your car model, I can get the team to verify the current position for
-that exact setup.
+Agent: That is a smart thing to check beforehand. The rules around window tinting are specific and depend on your exact vehicle and current regulations, so we always handle it carefully and confirm compliance before starting anything. If you share your car model, I can get the team to verify the current position for that exact setup.
 
 3)
 Customer: how much and how long for ppf on my x5
-Agent: Great choice - PPF is ideal for keeping an X5's front end free of
-stone chips. I can give you our range and a typical duration, and for an
-exact figure on your vehicle I'd suggest a quick call with the team for a
-precise quote. Want me to book that in for you?
+Agent: Great choice on the PPF — it is ideal for keeping an X5's front end free of stone chips. I can give you our range and a typical duration, and for an exact figure on your vehicle I would suggest a quick call with the team for a precise quote. Want me to book that in for you?
+
+4)
+Customer: what payment methods do you accept?
+Agent: We keep it flexible. You can pay via UPI, Visa, or other standard methods — just reach out and the team will confirm what is available for your service.
+
+5)
+Customer: how long does ceramic coating take?
+Agent: Typically a few hours depending on the setup. The team can confirm the exact time slot for your vehicle once you share the details.
+
+6)
+Customer: is PPF safe for my car paint?
+Agent: Totally fair concern — PPF is designed to protect, not damage, your factory paint. That said, every car is different, so the team will verify it is the right fit for yours.
+
+7)
+Customer: do you offer discounts on ceramic coating?
+Agent: Deals come up from time to time, but the specifics depend on the current offers. I would recommend the team look into what is available for your booking.
+
+8)
+Customer: where is your studio located?
+Agent: We are based in Jubilee Hills, Hyderabad. Happy to share directions or help you plan the trip if you are heading our way!
 """
 
 OUTPUT_FORMAT_GUIDE = """
@@ -89,8 +100,61 @@ OUTPUT FORMAT:
 def _safe_text(value) -> str:
     if value is None:
         return ""
-
     return str(value).strip()
+
+
+VARIATION_GUIDE = """
+RESPONSE VARIATION RULES:
+- Never repeat the same phrasing for the same question across different
+  conversations. Each response should sound freshly written.
+- Vary your opening: start with a question, a direct answer, a
+  conversational lead, or a brief acknowledgment — never the same one.
+- Alternate between short punchy sentences and slightly longer ones.
+- Use different sentence patterns: "That's a great question because...",
+  "Here is what I can tell you...", "Good news — ...", "I would say..."
+- Use contractions naturally and vary which ones you use.
+- Change your closing style: sometimes a question, sometimes a
+  call-to-action, sometimes a warm sign-off.
+- If you need to convey the same information again later in a thread,
+  rephrase it completely — never use identical wording.
+"""
+
+
+def select_answer_variant(approved_answer: str, approved_variants: list[str]) -> str:
+    """Pick a variant of the approved answer, or fall back to the base."""
+    variants = [v for v in approved_variants if v and v.strip()]
+    if variants:
+        return random.choice(variants)
+    return approved_answer
+
+
+def customer_safe_answer(answer: str) -> str:
+    """Remove internal workflow terminology before content reaches the model."""
+    answer = re.sub(
+        r"\s*\(\s*ENQUIRY\s*/\s*VERIFY\s*\)",
+        "",
+        answer or "",
+        flags=re.IGNORECASE,
+    )
+    answer = re.sub(
+        r"\s*\(\s*ENQUIRY\s*/\s*CONFIRM\s*\)",
+        "",
+        answer,
+        flags=re.IGNORECASE,
+    )
+    answer = re.sub(
+        r"\bNOT CONFIRMED as a universal duration\b",
+        "There is no confirmed universal duration",
+        answer,
+        flags=re.IGNORECASE,
+    )
+    answer = re.sub(
+        r"\bNOT CONFIRMED\b",
+        "not confirmed",
+        answer,
+        flags=re.IGNORECASE,
+    )
+    return answer.strip()
 
 
 def _approved_fallback(
@@ -103,6 +167,10 @@ def _approved_fallback(
 
         approved_answer = _safe_text(
             item.get("approved_answer")
+        )
+        approved_variants = item.get("approved_answer_variants", []) or []
+        approved_answer = select_answer_variant(
+            approved_answer, approved_variants
         )
 
         if approved_answer:
@@ -123,7 +191,7 @@ def _approved_fallback(
 # OpenRouter generation
 # ---------------------------------------------------------------------
 
-def _generate_with_openrouter(prompt: str) -> str:
+def _generate_with_openrouter(prompt: str, temperature: float = 0.8) -> str:
 
     api_key = config.OPENROUTER_API_KEY
 
@@ -140,6 +208,8 @@ def _generate_with_openrouter(prompt: str) -> str:
                 "content": prompt,
             }
         ],
+        "temperature": temperature,
+        "max_tokens": 500,
     }
 
     data = json.dumps(payload).encode("utf-8")
@@ -218,6 +288,12 @@ def generate_response(
             "I want to make sure I give you accurate information. "
             "Let me connect you with our team who can help you with this."
         )
+
+    approved_variants = business_decision.approved_answer_variants or []
+    approved_answer = select_answer_variant(
+        approved_answer, approved_variants
+    )
+    approved_answer = customer_safe_answer(approved_answer)
 
     service = _safe_text(
         business_decision.service
@@ -331,12 +407,13 @@ ABSOLUTELY NEVER:
 - Promise actions that are not supported by the approved knowledge.
 
 {OUTPUT_FORMAT_GUIDE}
+{VARIATION_GUIDE}
 """
 
     try:
 
         generated_text = _generate_with_openrouter(
-            prompt
+            prompt, temperature=0.8
         )
 
         if generated_text:
@@ -394,6 +471,12 @@ def generate_multi_intent_response(
         start=1,
     ):
 
+        item_answer = select_answer_variant(
+            item.get("approved_answer", ""),
+            item.get("approved_answer_variants", []) or [],
+        )
+        item_answer = customer_safe_answer(item_answer)
+
         block = f"""
 KNOWLEDGE BLOCK {index}
 
@@ -407,7 +490,7 @@ Intent:
 
 Approved Answer:
 
-{_safe_text(item.get("approved_answer"))}
+{_safe_text(item_answer)}
 
 Business Decision:
 
@@ -493,12 +576,13 @@ ABSOLUTELY NEVER:
 - Repeat the same information unnecessarily.
 
 {OUTPUT_FORMAT_GUIDE}
+{VARIATION_GUIDE}
 """
 
     try:
 
         generated_text = _generate_with_openrouter(
-            prompt
+            prompt, temperature=0.8
         )
 
         if generated_text:

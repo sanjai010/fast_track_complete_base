@@ -32,6 +32,7 @@ def analyze_candidates(results: list[dict]) -> dict:
             "service": strongest.get("service"),
             "expected_action": strongest.get("expected_action"),
             "approved_answer": strongest.get("approved_answer"),
+            "approved_answer_variants": strongest.get("approved_answer_variants", []),
             "result": strongest,
             "candidate_count": len(candidates),
         }

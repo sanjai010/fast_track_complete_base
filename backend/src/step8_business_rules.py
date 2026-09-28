@@ -26,6 +26,7 @@ class BusinessDecision:
     final_action: str
     use_llm: bool
     approved_answer: Optional[str]
+    approved_answer_variants: list[str]
     reason: str
     score: float
     canonical_id: Optional[str]
@@ -50,6 +51,7 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
             final_action="HUMAN_HANDOFF",
             use_llm=False,
             approved_answer=None,
+            approved_answer_variants=[],
             reason="No retrieval result was found.",
             score=0.0,
             canonical_id=None,
@@ -64,6 +66,7 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
     intent = str(result.get("intent") or "").upper()
     expected_action = str(result.get("expected_action") or "").upper()
     approved_answer = result.get("approved_answer")
+    approved_answer_variants = result.get("approved_answer_variants", [])
 
     # ---------------------------------------------------------
     # Rule 1: Confidence / unsupported query
@@ -74,6 +77,7 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
             final_action="HUMAN_HANDOFF",
             use_llm=False,
             approved_answer=None,
+            approved_answer_variants=[],
             reason=(
                 f"Retrieval score {score:.4f} is below the "
                 f"provisional threshold {CONFIDENCE_THRESHOLD:.2f}."
@@ -98,6 +102,7 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
             final_action="ESCALATE_COMPLAINT",
             use_llm=False,
             approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
             reason="Complaint/aftercare case must be escalated.",
             score=score,
             canonical_id=canonical_id,
@@ -115,6 +120,7 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
             final_action="ANSWER",
             use_llm=False,
             approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
             reason="Confirmed studio fact is returned without LLM rewriting.",
             score=score,
             canonical_id=canonical_id,
@@ -125,20 +131,51 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
 
     # ---------------------------------------------------------
     # Rule 4: Price
+    #
+    # Keyed on the intent / action only. The guardrail *text* is
+    # deliberately not consulted here because DISCOUNT and other
+    # records also carry a "PRICE GUARDRAIL" note while their
+    # approved answer is about something else entirely.
     # ---------------------------------------------------------
     if (
         intent == "PRICE"
         or "PRICE" in expected_action
-        or "PRICE" in str(result.get("guardrail", "")).upper()
     ):
         return BusinessDecision(
             decision="PRICE_GUARDED",
             final_action="ANSWER_WITH_PRICE_GUARDRAIL",
             use_llm=True,
             approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
             reason=(
                 "Price answer may be naturally phrased, but the approved "
                 "price/range and price guardrail must be preserved."
+            ),
+            score=score,
+            canonical_id=canonical_id,
+            service=service,
+            intent=intent,
+            expected_action=expected_action,
+        )
+
+    # ---------------------------------------------------------
+    # Rule 4b: Non-complaint escalations (legal, safety,
+    # warranty, aftercare, team review).
+    #
+    # The approved answer is complete and already states that
+    # the team confirms the detail, so it is returned directly
+    # without letting an LLM add outside knowledge.
+    # ---------------------------------------------------------
+    if expected_action.startswith("ESCALATE"):
+        return BusinessDecision(
+            decision="TEAM_ESCALATION",
+            final_action="TEAM_ESCALATION",
+            use_llm=False,
+            approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
+            reason=(
+                "Escalation topics (legal/safety/warranty/aftercare) "
+                "must use the approved answer verbatim."
             ),
             score=score,
             canonical_id=canonical_id,
@@ -159,6 +196,7 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
             final_action="VERIFY_AVAILABILITY",
             use_llm=False,
             approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
             reason=(
                 "Live availability cannot be assumed. "
                 "Use the approved availability response and require "
@@ -183,6 +221,7 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
             final_action="BOOKING_REQUEST",
             use_llm=False,
             approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
             reason="Booking request follows the approved booking flow.",
             score=score,
             canonical_id=canonical_id,
@@ -192,11 +231,16 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
         )
 
     # ---------------------------------------------------------
-    # Rule 7: Required data
+    # Rule 7: Required data collection / enquiry verification
+    #
+    # Covers composite actions such as
+    # "COLLECT_VEHICLE + VERIFY_COMPATIBILITY",
+    # "COLLECT_VEHICLE + COLLECT_SCOPE + REQUEST_TEAM_QUOTE"
+    # and "ENQUIRY_VERIFY".
     # ---------------------------------------------------------
     if (
-        "COLLECT_REQUIRED_DATA" in expected_action
-        or "COLLECT_DATA" in expected_action
+        "COLLECT" in expected_action
+        or "ENQUIRY" in expected_action
         or "COLLECT" in intent
     ):
         return BusinessDecision(
@@ -204,7 +248,50 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
             final_action="COLLECT_REQUIRED_DATA",
             use_llm=False,
             approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
             reason="Required customer information must be collected.",
+            score=score,
+            canonical_id=canonical_id,
+            service=service,
+            intent=intent,
+            expected_action=expected_action,
+        )
+
+    # ---------------------------------------------------------
+    # Rule 7b: Payment verification
+    #
+    # The approved answer lists exactly which payment methods
+    # are confirmed, so it is returned verbatim.
+    # ---------------------------------------------------------
+    if expected_action.startswith("VERIFY"):
+        return BusinessDecision(
+            decision="VERIFY_DETAILS",
+            final_action="VERIFY_DETAILS",
+            use_llm=False,
+            approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
+            reason=(
+                "Payment/verification answers must use the approved "
+                "wording so confirmed and unconfirmed terms are not mixed."
+            ),
+            score=score,
+            canonical_id=canonical_id,
+            service=service,
+            intent=intent,
+            expected_action=expected_action,
+        )
+
+    # ---------------------------------------------------------
+    # Rule 7c: Scope split / team review (combination requests)
+    # ---------------------------------------------------------
+    if "TEAM_REVIEW" in expected_action or "SPLIT_SCOPE" in expected_action:
+        return BusinessDecision(
+            decision="TEAM_REVIEW",
+            final_action="TEAM_REVIEW",
+            use_llm=False,
+            approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
+            reason="Combined-scope requests go through team review.",
             score=score,
             canonical_id=canonical_id,
             service=service,
@@ -215,12 +302,13 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
     # ---------------------------------------------------------
     # Rule 8: Normal approved answer
     # ---------------------------------------------------------
-    if expected_action.startswith("ANSWER") or expected_action == "":
+    if expected_action == "" or "ANSWER" in expected_action:
         return BusinessDecision(
             decision="ALLOW_LLM",
             final_action="GENERATE_RESPONSE",
             use_llm=True,
             approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
             reason="Approved knowledge can be naturally phrased by the LLM.",
             score=score,
             canonical_id=canonical_id,
@@ -231,14 +319,37 @@ def apply_business_rules(result: Optional[dict]) -> BusinessDecision:
 
     # ---------------------------------------------------------
     # Safety fallback
+    #
+    # If retrieval passed the confidence threshold and an approved
+    # answer exists, the LLM may rephrase that approved answer.
+    # Only a missing approved answer blocks the response.
     # ---------------------------------------------------------
+    if approved_answer:
+        return BusinessDecision(
+            decision="ALLOW_LLM",
+            final_action="GENERATE_RESPONSE",
+            use_llm=True,
+            approved_answer=approved_answer,
+            approved_answer_variants=approved_answer_variants,
+            reason=(
+                f"Unrecognized expected_action {expected_action!r} but an "
+                "approved answer exists; LLM may only rephrase it."
+            ),
+            score=score,
+            canonical_id=canonical_id,
+            service=service,
+            intent=intent,
+            expected_action=expected_action,
+        )
+
     return BusinessDecision(
         decision="NOT_CONFIRMED",
         final_action="HUMAN_HANDOFF",
         use_llm=False,
         approved_answer=None,
+        approved_answer_variants=[],
         reason=(
-            f"Unrecognized expected_action: {expected_action!r}. "
+            f"No approved answer for expected_action {expected_action!r}. "
             "System will not guess."
         ),
         score=score,
@@ -271,5 +382,8 @@ def print_decision(decision: BusinessDecision) -> None:
 
     if decision.approved_answer:
         print(f"approved_answer : {decision.approved_answer}")
+
+    if decision.approved_answer_variants:
+        print(f"variants count  : {len(decision.approved_answer_variants)}")
 
     print("=" * 70)

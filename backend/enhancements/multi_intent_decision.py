@@ -56,6 +56,7 @@ def build_combined_knowledge(
                     "service": item["service"],
                     "canonical_id": item["canonical_id"],
                     "approved_answer": decision.approved_answer,
+                    "approved_answer_variants": decision.approved_answer_variants or [],
                     "decision": decision.decision,
                     "final_action": decision.final_action,
                     "use_llm": decision.use_llm,

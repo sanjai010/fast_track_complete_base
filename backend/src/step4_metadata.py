@@ -15,6 +15,7 @@ Final payload per chunk (this is exactly what lands in Qdrant in Step 6):
   service             - e.g. "Luxury Recliners"
   intent              - e.g. "DISCOVERY" / "PRICE" / "BOOKING" ...
   approved_answer     - the ONLY answer text allowed to be shown for this canonical_id
+  approved_answer_variants - alternate phrasings of the approved answer
   risk                - "low" / "medium" / "high" / ...
   guardrail           - the rule text the business-rules layer checks against
   expected_action     - e.g. "ANSWER" / "BOOKING_REQUEST" / "ESCALATE_COMPLAINT"
@@ -44,6 +45,7 @@ def enrich_chunks(chunks: list, questions_by_id: dict, canonical: dict) -> list:
             "service": c["service"],
             "intent": c["intent"],
             "approved_answer": c["approved_answer"],
+            "approved_answer_variants": c.get("approved_answer_variants", []),
             "risk": c["risk"],
             "guardrail": c["guardrail"],
             "expected_action": c["expected_action"],
